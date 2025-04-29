@@ -75,7 +75,6 @@ class System(ABC):
                 should_update = True
             elif incoming_timestamp == current_timestamp and incoming_grade < current_grade:
                 should_update = True
-
             if should_update:
                 self.set(sid, cid, incoming_grade, incoming_timestamp)
 

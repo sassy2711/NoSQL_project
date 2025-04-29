@@ -360,6 +360,176 @@
 #         result = self.cursor.fetchall()
 #         return result[0][0] if result else None
 
+# from pyhive import hive
+# import sys
+# import traceback
+# from System import System
+
+# class Hive(System):
+#     def __init__(self):
+#         super().__init__("HIVE", "oplog.hiveql", "oplog_offsets")
+
+#         # HiveServer2 connection parameters
+#         host = 'localhost'
+#         port = 10000
+#         username = ''        # Set your Hive username if needed
+#         database = 'default' # Choose the Hive database
+
+#         # 1) CONNECT
+#         try:
+#             print(f"[CONNECT] hive.Connection(host={host}, port={port}, database={database})")
+#             self.conn = hive.Connection(host=host, port=port, username=username, database=database)
+#             print("[OK] Connected to HiveServer2")
+#         except Exception:
+#             print("[ERROR] Failed to connect to HiveServer2:")
+#             traceback.print_exc()
+#             sys.exit(1)
+
+#         self.cursor = self.conn.cursor()
+
+#         # Table names and HDFS path
+#         self.table = "student_course_grades"
+#         self.hdfs_csv_path = '/data/student_course_grades.csv'
+
+#         # 2) CREATE MAIN TABLE
+#         create_main_table = f"""
+#         CREATE TABLE IF NOT EXISTS {self.table} (
+#             student_id STRING,
+#             course_id STRING,
+#             roll_no STRING,
+#             email_id STRING,
+#             grade STRING,
+#             last_update_ts INT
+#         )
+#         ROW FORMAT DELIMITED
+#         FIELDS TERMINATED BY ','
+#         STORED AS TEXTFILE
+#         """
+#         self._exec_print(create_main_table, "Create main table")
+
+#         # 3) VERIFY MAIN TABLE EXISTS
+#         self._list_tables("After CREATE TABLE")
+
+#         # 4) INITIAL LOAD IF EMPTY
+#         count = self._get_count(self.table)
+#         if count == 0:
+#             print(f"[LOAD] Table {self.table} is empty ({count} rows), loading data…")
+#             load_sql = f"""
+#             LOAD DATA LOCAL INPATH '{self.hdfs_csv_path}'
+#             INTO TABLE {self.table}
+#             """
+#             self._exec_print(load_sql, "Load data into main table")
+#         else:
+#             print(f"[SKIP] Table {self.table} already has {count} rows, skipping load.")
+
+#         # 5) CREATE OFFSET TABLE
+#         create_offset_table = f"""
+#         CREATE TABLE IF NOT EXISTS {self.offset_table} (
+#             system_name STRING,
+#             byte_offset BIGINT
+#         )
+#         ROW FORMAT DELIMITED
+#         FIELDS TERMINATED BY ','
+#         STORED AS TEXTFILE
+#         """
+#         self._exec_print(create_offset_table, "Create offset table")
+#         self._list_tables("After OFFSET table creation")
+
+#         # 6) INIT OFFSETS
+#         offset_count = self._get_count(self.offset_table)
+#         if offset_count == 0:
+#             print("[INIT] Initializing oplog_offsets…")
+#             for sys_name in ("HIVE", "MONGO", "SQL"):
+#                 insert_sql = f"INSERT INTO {self.offset_table} VALUES ('{sys_name}', 0)"
+#                 self._exec_print(insert_sql, f"Insert offset for {sys_name}")
+#         else:
+#             print(f"[SKIP] oplog_offsets already has {offset_count} rows")
+
+#     def _exec_print(self, sql, label="SQL"):
+#         print(f"[EXEC] {label}:\n{sql.strip()}")
+#         try:
+#             self.cursor.execute(sql)
+#             print(f"[OK] {label} succeeded")
+#         except Exception:
+#             print(f"[ERROR] {label} failed:")
+#             traceback.print_exc()
+
+#     def _get_count(self, table):
+#         try:
+#             count_sql = f"SELECT COUNT(*) FROM {table}"
+#             print(f"[QUERY] {count_sql}")
+#             self.cursor.execute(count_sql)
+#             cnt = self.cursor.fetchall()[0][0]
+#             print(f"[RESULT] {table} has {cnt} rows")
+#             return cnt
+#         except Exception:
+#             print(f"[ERROR] COUNT(*) on {table} failed:")
+#             traceback.print_exc()
+#             return -1
+
+#     def _list_tables(self, context=""):
+#         try:
+#             show_sql = "SHOW TABLES"
+#             print(f"[QUERY] {show_sql} ({context})")
+#             self.cursor.execute(show_sql)
+#             tables = [t[0] for t in self.cursor.fetchall()]
+#             print(f"[TABLES] {tables}")
+#         except Exception:
+#             print(f"[ERROR] SHOW TABLES failed ({context}):")
+#             traceback.print_exc()
+
+#     def get(self, student_id, course_id, timestamp):
+#         query = f"SELECT grade FROM {self.table} WHERE student_id='{student_id}' AND course_id='{course_id}'"
+#         self._exec_print(query, f"GET({student_id},{course_id})")
+#         result = self.cursor.fetchall()
+#         grade = result[0][0] if result else "N/A"
+#         self.log_operation(f"GET({student_id},{course_id})", timestamp)
+#         return grade
+
+#     def set(self, student_id, course_id, grade, timestamp):
+#         # Simulate UPDATE via INSERT OVERWRITE
+#         insert_query = f"""
+#         INSERT OVERWRITE TABLE {self.table}
+#         SELECT
+#             student_id,
+#             course_id,
+#             roll_no,
+#             email_id,
+#             CASE WHEN student_id='{student_id}' AND course_id='{course_id}' THEN '{grade}' ELSE grade END AS grade,
+#             last_update_ts
+#         FROM {self.table}
+#         """
+#         self._exec_print(insert_query, f"SET(({student_id},{course_id}),{grade})")
+#         self.log_operation(f"SET(({student_id},{course_id}),{grade})", timestamp)
+
+#     def get_last_offset(self, system_name):
+#         query = f"SELECT byte_offset FROM {self.offset_table} WHERE system_name='{system_name}'"
+#         self._exec_print(query, f"GET_OFFSET({system_name})")
+#         result = self.cursor.fetchall()
+#         return result[0][0] if result else 0
+
+#     def update_offset(self, system_name, new_offset):
+#         overwrite_query = f"""
+#         INSERT OVERWRITE TABLE {self.offset_table}
+#         SELECT
+#             system_name,
+#             CASE WHEN system_name='{system_name}' THEN {new_offset} ELSE byte_offset END AS byte_offset
+#         FROM {self.offset_table}
+#         """
+#         self._exec_print(overwrite_query, f"UPDATE_OFFSET({system_name} -> {new_offset})")
+
+#     def get_current_timestamp_in_table(self, student_id, course_id):
+#         query = f"SELECT last_update_ts FROM {self.table} WHERE student_id='{student_id}' AND course_id='{course_id}'"
+#         self._exec_print(query, f"GET_TS({student_id},{course_id})")
+#         result = self.cursor.fetchall()
+#         return result[0][0] if result else None
+
+#     def get_current_grade_in_table(self, student_id, course_id):
+#         query = f"SELECT grade FROM {self.table} WHERE student_id='{student_id}' AND course_id='{course_id}'"
+#         self._exec_print(query, f"GET_GRADE({student_id},{course_id})")
+#         result = self.cursor.fetchall()
+#         return result[0][0] if result else None
+
 from pyhive import hive
 import sys
 import traceback
@@ -377,7 +547,6 @@ class Hive(System):
 
         # 1) CONNECT
         try:
-            print(f"[CONNECT] hive.Connection(host={host}, port={port}, database={database})")
             self.conn = hive.Connection(host=host, port=port, username=username, database=database)
             print("[OK] Connected to HiveServer2")
         except Exception:
@@ -402,13 +571,13 @@ class Hive(System):
             last_update_ts INT
         )
         ROW FORMAT DELIMITED
-        FIELDS TERMINATED BY ','
+        FIELDS TERMINATED BY ',' 
         STORED AS TEXTFILE
         """
-        self._exec_print(create_main_table, "Create main table")
+        self._exec_sql(create_main_table)
 
         # 3) VERIFY MAIN TABLE EXISTS
-        self._list_tables("After CREATE TABLE")
+        self._list_tables()
 
         # 4) INITIAL LOAD IF EMPTY
         count = self._get_count(self.table)
@@ -418,7 +587,16 @@ class Hive(System):
             LOAD DATA LOCAL INPATH '{self.hdfs_csv_path}'
             INTO TABLE {self.table}
             """
-            self._exec_print(load_sql, "Load data into main table")
+            self._exec_sql(load_sql)
+            # Remove header row after loading
+            cleanup_query = f"""
+            INSERT OVERWRITE TABLE {self.table}
+            SELECT *
+            FROM {self.table}
+            WHERE student_id != 'student-ID'
+            """
+            self._exec_sql(cleanup_query)
+
         else:
             print(f"[SKIP] Table {self.table} already has {count} rows, skipping load.")
 
@@ -429,11 +607,11 @@ class Hive(System):
             byte_offset BIGINT
         )
         ROW FORMAT DELIMITED
-        FIELDS TERMINATED BY ','
+        FIELDS TERMINATED BY ',' 
         STORED AS TEXTFILE
         """
-        self._exec_print(create_offset_table, "Create offset table")
-        self._list_tables("After OFFSET table creation")
+        self._exec_sql(create_offset_table)
+        self._list_tables()
 
         # 6) INIT OFFSETS
         offset_count = self._get_count(self.offset_table)
@@ -441,23 +619,21 @@ class Hive(System):
             print("[INIT] Initializing oplog_offsets…")
             for sys_name in ("HIVE", "MONGO", "SQL"):
                 insert_sql = f"INSERT INTO {self.offset_table} VALUES ('{sys_name}', 0)"
-                self._exec_print(insert_sql, f"Insert offset for {sys_name}")
+                self._exec_sql(insert_sql)
         else:
             print(f"[SKIP] oplog_offsets already has {offset_count} rows")
 
-    def _exec_print(self, sql, label="SQL"):
-        print(f"[EXEC] {label}:\n{sql.strip()}")
+    def _exec_sql(self, sql):
         try:
             self.cursor.execute(sql)
-            print(f"[OK] {label} succeeded")
+            #print(f"[OK] SQL query executed successfully")
         except Exception:
-            print(f"[ERROR] {label} failed:")
+            print(f"[ERROR] SQL query execution failed:")
             traceback.print_exc()
 
     def _get_count(self, table):
         try:
             count_sql = f"SELECT COUNT(*) FROM {table}"
-            print(f"[QUERY] {count_sql}")
             self.cursor.execute(count_sql)
             cnt = self.cursor.fetchall()[0][0]
             print(f"[RESULT] {table} has {cnt} rows")
@@ -467,20 +643,19 @@ class Hive(System):
             traceback.print_exc()
             return -1
 
-    def _list_tables(self, context=""):
+    def _list_tables(self):
         try:
             show_sql = "SHOW TABLES"
-            print(f"[QUERY] {show_sql} ({context})")
             self.cursor.execute(show_sql)
             tables = [t[0] for t in self.cursor.fetchall()]
             print(f"[TABLES] {tables}")
         except Exception:
-            print(f"[ERROR] SHOW TABLES failed ({context}):")
+            print(f"[ERROR] SHOW TABLES failed:")
             traceback.print_exc()
 
     def get(self, student_id, course_id, timestamp):
         query = f"SELECT grade FROM {self.table} WHERE student_id='{student_id}' AND course_id='{course_id}'"
-        self._exec_print(query, f"GET({student_id},{course_id})")
+        self._exec_sql(query)
         result = self.cursor.fetchall()
         grade = result[0][0] if result else "N/A"
         self.log_operation(f"GET({student_id},{course_id})", timestamp)
@@ -499,12 +674,12 @@ class Hive(System):
             last_update_ts
         FROM {self.table}
         """
-        self._exec_print(insert_query, f"SET(({student_id},{course_id}),{grade})")
+        self._exec_sql(insert_query)
         self.log_operation(f"SET(({student_id},{course_id}),{grade})", timestamp)
 
     def get_last_offset(self, system_name):
         query = f"SELECT byte_offset FROM {self.offset_table} WHERE system_name='{system_name}'"
-        self._exec_print(query, f"GET_OFFSET({system_name})")
+        self._exec_sql(query)
         result = self.cursor.fetchall()
         return result[0][0] if result else 0
 
@@ -516,16 +691,16 @@ class Hive(System):
             CASE WHEN system_name='{system_name}' THEN {new_offset} ELSE byte_offset END AS byte_offset
         FROM {self.offset_table}
         """
-        self._exec_print(overwrite_query, f"UPDATE_OFFSET({system_name} -> {new_offset})")
+        self._exec_sql(overwrite_query)
 
     def get_current_timestamp_in_table(self, student_id, course_id):
         query = f"SELECT last_update_ts FROM {self.table} WHERE student_id='{student_id}' AND course_id='{course_id}'"
-        self._exec_print(query, f"GET_TS({student_id},{course_id})")
+        self._exec_sql(query)
         result = self.cursor.fetchall()
         return result[0][0] if result else None
 
     def get_current_grade_in_table(self, student_id, course_id):
         query = f"SELECT grade FROM {self.table} WHERE student_id='{student_id}' AND course_id='{course_id}'"
-        self._exec_print(query, f"GET_GRADE({student_id},{course_id})")
+        self._exec_sql(query)
         result = self.cursor.fetchall()
         return result[0][0] if result else None

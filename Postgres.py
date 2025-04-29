@@ -16,11 +16,8 @@ class Postgres(System):
         self.cursor = self.conn.cursor()
         self.table = "student_course_grades"
 
-        delete_table_query = f"DROP TABLE IF EXISTS {self.table}"
-        self.cursor.execute(delete_table_query)
-
         create_main_table = f"""
-        CREATE TABLE {self.table} (
+        CREATE TABLE IF NOT EXISTS {self.table} (
             student_id TEXT,
             course_id TEXT,
             roll_no TEXT,
